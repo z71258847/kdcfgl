@@ -5,6 +5,7 @@
 #include "llvm/Analysis/BlockFrequencyInfo.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Analysis/PostDominators.h"
+#include <vector>
 #include <unordered_set>
 
 using namespace llvm;
@@ -35,10 +36,11 @@ struct kdcfgl : public FunctionPass {
 		PostDominatorTree &PDT = getAnalysis<PostDominatorTreeWrapperPass>().getPostDomTree();
 		std::unordered_set<BasicBlock*> visited;
 		getKeyDependentBranchedBlocksByTopologicalSort(start_block, start_block, PDT, visited, sorted_blocks);
+		std::reverse(sorted_blocks.begin(), sorted_blocks.end());
 	}
 
 	void getKeyDependentBranchedBlocksByTopologicalSort(const BasicBlock* start_block, BasicBlock* block, const PostDominatorTree &PDT,
-		std::unordered_set<BasicBlock*>& visited, std::vector<BasicBlock*>& sorted_blocks) {
+														std::unordered_set<BasicBlock*>& visited, std::vector<BasicBlock*>& sorted_blocks) {
 		visited.insert(block);
 		if (start_block != block) {
 			bool immediate_post_dominator = PDT.dominates(block, start_block);
