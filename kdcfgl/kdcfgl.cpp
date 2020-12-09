@@ -78,7 +78,7 @@ struct kdcfgl : public FunctionPass {
 	}
 
 	void print_related_blocks_in_topological_order(const std::vector<BasicBlock*>& sorted_blocks) {
-		errs() << "print related blocks in topological_order:\n";
+		errs() << "print related blocks in topological order:\n";
 		for (auto bb : sorted_blocks) {
 			errs() <<  bb->getName() << "\n";
 		}
