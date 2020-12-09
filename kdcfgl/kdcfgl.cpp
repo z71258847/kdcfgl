@@ -73,10 +73,15 @@ struct kdcfgl : public FunctionPass {
 		}
 		std::vector<BasicBlock*> sorted_blocks;
 		getKeyDependentBranchedBlocks(critical_branch, sorted_blocks);
+		print_related_blocks_in_topological_order(sorted_blocks);
+		return true;
+	}
+
+	void print_related_blocks_in_topological_order(const std::vector<BasicBlock*>& sorted_blocks) {
+		errs() << "print related blocks in topological_order:\n";
 		for (auto bb : sorted_blocks) {
 			errs() <<  bb->getName() << "\n";
 		}
-		return true;
 	}
 
 	void getKeyDependentBranchedBlocks(std::unordered_set<BasicBlock*> start_blocks, std::vector<BasicBlock*>& sorted_blocks) {
