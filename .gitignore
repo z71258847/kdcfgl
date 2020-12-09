@@ -33,3 +33,9 @@
 
 *.bc
 *.pdf
+
+# build
+build/
+
+# vscode
+.vscode/
