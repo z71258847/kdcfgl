@@ -55,7 +55,7 @@ struct kdcfgl : public FunctionPass {
 			}
 		}
 
-		std::vector<BasicBlock*> critical_branch;
+		std::unordered_set<BasicBlock*> critical_branch;
 
 		while (!key_dependent.empty()){
 			Value *cur_v=key_dependent.front();
@@ -64,38 +64,50 @@ struct kdcfgl : public FunctionPass {
 			if (Instruction *cur_i = dyn_cast<Instruction>(cur_v)){
 				if (isBranch(cur_i->getOpcode())){
 					errs() << "found critical branch in BB " << cur_i->getParent()->getName() << "\n";
-					critical_branch.push_back(cur_i->getParent());
-				}	
+					critical_branch.insert(cur_i->getParent());
+				}
 			}
 			for (User *u : cur_v->users()){
 				key_dependent.push_back(dyn_cast<Value>(u));
 			}
 		}
-		
+		std::vector<BasicBlock*> sorted_blocks;
+		getKeyDependentBranchedBlocks(critical_branch, sorted_blocks);
+		for (auto bb : sorted_blocks) {
+			errs() <<  bb->getName() << "\n";
+		}
 		return true;
 	}
 
-	void getKeyDependentBranchedBlocks(BasicBlock* start_block, std::vector<BasicBlock*>& sorted_blocks) {
+	void getKeyDependentBranchedBlocks(std::unordered_set<BasicBlock*> start_blocks, std::vector<BasicBlock*>& sorted_blocks) {
 		PostDominatorTree &PDT = getAnalysis<PostDominatorTreeWrapperPass>().getPostDomTree();
 		std::unordered_set<BasicBlock*> visited;
-		getKeyDependentBranchedBlocksByTopologicalSort(start_block, start_block, PDT, visited, sorted_blocks);
+		for (auto it_start_block = start_blocks.begin(); it_start_block != start_blocks.end(); it_start_block++) {
+			auto it_visited = visited.find(*it_start_block);
+			if (it_visited == visited.end()) {
+				getKeyDependentBranchedBlocksByTopologicalSort(start_blocks, *it_start_block, *start_blocks.begin(), PDT, visited, sorted_blocks);
+			}
+		}
 		std::reverse(sorted_blocks.begin(), sorted_blocks.end());
 	}
 
-	void getKeyDependentBranchedBlocksByTopologicalSort(const BasicBlock* start_block, BasicBlock* block, const PostDominatorTree &PDT,
+	void getKeyDependentBranchedBlocksByTopologicalSort(const std::unordered_set<BasicBlock*> start_blocks, const BasicBlock* start_block, BasicBlock* block, const PostDominatorTree &PDT,
 														std::unordered_set<BasicBlock*>& visited, std::vector<BasicBlock*>& sorted_blocks) {
 		visited.insert(block);
 		if (start_block != block) {
 			bool immediate_post_dominator = PDT.dominates(block, start_block);
 			if (immediate_post_dominator) {
-				sorted_blocks.push_back(block);
-				return;
+				auto it = start_blocks.find(block);
+				if (it == start_blocks.end()) {
+					sorted_blocks.push_back(block);
+					return;
+				}
 			}
 		}
 		for (BasicBlock* suc : successors(block)) {
-			auto it = visited.find(suc);
-			if (it == visited.end()) {
-				getKeyDependentBranchedBlocksByTopologicalSort(start_block, suc, PDT, visited, sorted_blocks);
+			auto it_visited = visited.find(suc);
+			if (it_visited == visited.end()) {
+				getKeyDependentBranchedBlocksByTopologicalSort(start_blocks, start_block, suc, PDT, visited, sorted_blocks);
 			}
 		}
 		sorted_blocks.push_back(block);
