@@ -4,8 +4,13 @@ PASS=-kdcfgl                   # Choose either -fplicm-correctness or -fplicm-pe
 # Delete outputs from previous run.
 rm -f *.bc *_output
 
+SOURCE=${1}.c
+if [[ -f ${1}.cpp ]]; then
+    SOURCE=${1}.cpp
+fi
+
 # Convert source code to bitcode (IR)
-clang -emit-llvm -O0 -Xclang -disable-O0-optnone -c ${1}.c -o ${1}.bc
+clang -emit-llvm -O0 -Xclang -disable-O0-optnone -c $SOURCE -o ${1}.bc
 # Canonicalize natural loops
 opt -loop-simplify ${1}.bc -o ${1}.ls.bc
 # Mem2reg pass
