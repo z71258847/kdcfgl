@@ -303,10 +303,8 @@ struct kdcfgl : public FunctionPass {
 					BasicBlock* suc = brI->getSuccessor(0);
 					std::pair<BasicBlock*, BasicBlock*> edge = std::make_pair(block, suc);
 					auto it_edge = masks.find(edge);
-					if (it_edge == masks.end()) {
-						masks.insert(make_pair(edge, it_start_edge->second));
-						createMasksForKeyDependentBranchedBlocksDFS(start_blocks, start_block, block, suc, PDT);
-					}
+					masks[edge] = it_start_edge->second;
+					createMasksForKeyDependentBranchedBlocksDFS(start_blocks, start_block, block, suc, PDT);
 				}
 			}
 		}
