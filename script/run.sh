@@ -29,12 +29,13 @@ opt -mem2reg ${1}.ls.bc -o ${1}.m2r.bc
 # Apply kdcfgl
 #opt -o ${1}.kdcfgl.bc -pgo-instr-use -pgo-test-profile-file=${1}.profdata -load ${PATH2LIB} ${PASS} < ${1}.m2r.bc > /dev/null
 opt -o ${1}.kdcfgl.bc -load ${PATH2LIB} ${PASS} < ${1}.m2r.bc > /dev/null
+# chain unconditional branch blocks into one large block
 opt -simplifycfg ${1}.kdcfgl.bc -o ${1}.merged.bc
 
 # Generate binary excutable before FPLICM: Unoptimzied code
-clang ${1}.m2r.bc -o ${1}_no_kdcfgl
+clang -O2 ${1}.m2r.bc -o ${1}_no_kdcfgl
 # Generate binary executable after FPLICM: Optimized code
-clang ${1}.merged.bc -o ${1}_kdcfgl
+clang -O2 ${1}.merged.bc -o ${1}_kdcfgl
 
 # Produce output from binary to check correctness
 ./${1}_no_kdcfgl > correct_output

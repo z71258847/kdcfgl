@@ -2,8 +2,6 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Analysis/BranchProbabilityInfo.h"
-#include "llvm/Analysis/BlockFrequencyInfo.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/IR/InstrTypes.h"
@@ -12,7 +10,6 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <deque>
-#include <utility>
 
 
 using namespace llvm;
@@ -39,18 +36,12 @@ struct kdcfgl : public FunctionPass {
 
 
 	void getAnalysisUsage(AnalysisUsage &AU) const{
-		AU.addRequired<BlockFrequencyInfoWrapperPass>();
-		AU.addRequired<BranchProbabilityInfoWrapperPass>();
 		AU.addRequired<PostDominatorTreeWrapperPass>();
 	}
 	
 
 	bool runOnFunction(Function &F) override {
-		BranchProbabilityInfo &BPI = getAnalysis<BranchProbabilityInfoWrapperPass>().getBPI();
-		BlockFrequencyInfo &BFI = getAnalysis<BlockFrequencyInfoWrapperPass>().getBFI();	
-		
 		std::deque<Value*> key_dependent;
-
 		for (Function::iterator bb=F.begin(), e=F.end(); bb!=e; ++bb){
 			for (BasicBlock::iterator i=bb->begin(), ie=bb->end(); i!=ie; ++i){
 				//Instruction

@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cinttypes>
 #include <x86intrin.h>
+#include <random>
 
 template<typename T> T mod_exp(T base, __attribute__((annotate(""))) T exp, const T mod) {
     const size_t len = sizeof(T) << 3;
@@ -17,6 +18,8 @@ template<typename T> T mod_exp(T base, __attribute__((annotate(""))) T exp, cons
 }
 
 int main() {
+    std::mt19937_64 eng(0);
+    std::uniform_int_distribution<uint32_t> distr;
     uint32_t base = 0xDEADBEEF;
     uint32_t mod = (1 << 16) - 123;
     uint32_t exp = 0x0;
@@ -30,6 +33,18 @@ int main() {
     result = mod_exp<uint32_t>(base, exp, mod);
     tend = __rdtsc();
     fprintf(stderr, "all ones, time: %lu\n", tend - tstart);
+    fprintf(stdout, "%u\n", result);
+    exp = 0x0000FFFF;
+    tstart = __rdtsc();
+    result = mod_exp<uint32_t>(base, exp, mod);
+    tend = __rdtsc();
+    fprintf(stderr, "half half, time: %lu\n", tend - tstart);
+    fprintf(stdout, "%u\n", result);
+    exp = distr(eng);
+    tstart = __rdtsc();
+    result = mod_exp<uint32_t>(base, exp, mod);
+    tend = __rdtsc();
+    fprintf(stderr, "random, time: %lu\n", tend - tstart);
     fprintf(stdout, "%u\n", result);
     return 0;
 }
