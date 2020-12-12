@@ -7,6 +7,7 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/IR/InstrTypes.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
@@ -89,10 +90,94 @@ struct kdcfgl : public FunctionPass {
 		print_related_blocks_in_topological_order(sorted_blocks);
 		createMasksForKeyDependentBranchedBlocks(critical_branch);
 		print_masks();
+		replaceWithUnconditionalBranch(sorted_blocks);
+		replacePhiWithSelect(sorted_blocks);
 		return true;
 	}
 
-	void print_related_blocks_in_topological_order(const std::vector<BasicBlock*>& sorted_blocks) {
+	void replaceWithUnconditionalBranch(std::vector<BasicBlock*>& sorted_blocks) {
+		if (sorted_blocks.size() < 2) {
+			return;
+		}
+		for (size_t i = 0; i < sorted_blocks.size() - 1; i++) {
+			auto it_I = sorted_blocks[i]->begin();
+			while (it_I != sorted_blocks[i]->end()) {
+				unsigned int opCode = it_I->getOpcode();
+				if (opCode == Instruction::Br) {
+					BranchInst* brI = dyn_cast<BranchInst>(it_I);
+					if (brI->isConditional() || brI->getSuccessor(0) != sorted_blocks[i + 1]) {
+						BranchInst* unconditional = BranchInst::Create(sorted_blocks[i + 1]);
+						ReplaceInstWithInst(brI, unconditional);
+						errs() << "jmp: " << unconditional->getParent()->getName() << " => " << unconditional->getSuccessor(0)->getName() << "\n";
+					}
+					break;
+				}
+				it_I++;
+			}
+		}
+	}
+
+	void replacePhiWithSelect(const std::vector<BasicBlock*>& sorted_blocks) {
+		for (size_t i = 0; i < sorted_blocks.size(); i++) {
+			auto it_I = sorted_blocks[i]->begin();
+			while (it_I != sorted_blocks[i]->end()) {
+				unsigned int opCode = it_I->getOpcode();
+				if (opCode == Instruction::PHI) {
+					PHINode* phi = dyn_cast<PHINode>(it_I);
+					std::vector<SelectInst*> inserted;
+					bool valid = true;
+					unsigned int j = 1;
+					BasicBlock* to = sorted_blocks[i];
+					BasicBlock* from = phi->getIncomingBlock(j);
+					auto edge = std::make_pair(from, to);
+					auto it_edge = masks.find(edge);
+					SelectInst* select;
+					if (it_edge != masks.end() && it_edge->second != nullptr) {
+						Twine select_name = Twine("select_").concat(it_edge->second->getName());
+						select = SelectInst::Create(it_edge->second, phi->getIncomingValue(j), phi->getIncomingValue(j - 1), select_name, phi);
+						inserted.push_back(select);
+						errs() << "insert select: " << select->getName() << "\n";
+					} else {
+						valid = false;
+					}
+					if (valid) {
+						for (j = 2; j < phi->getNumIncomingValues(); j++) {
+							from = phi->getIncomingBlock(j);
+							edge = std::make_pair(from, to);
+							it_edge = masks.find(edge);
+							if (it_edge != masks.end() && it_edge->second != nullptr) {
+								Twine select_name = Twine("select_").concat(it_edge->second->getName());
+								select = SelectInst::Create(it_edge->second, phi->getIncomingValue(j), select, select_name, phi);
+								inserted.push_back(select);
+							} else {
+								valid = false;
+								break;
+							}
+						}
+					}
+					if (!valid) {
+						for (auto rit_si = inserted.rbegin(); rit_si != inserted.rend(); rit_si++) {
+							(*rit_si)->eraseFromParent();
+						}
+						it_I++;
+					} else {
+						auto it_rm = it_I;
+						errs() << "remove phi: " << it_rm->getName() << "; its users are"<< "\n";
+						for (auto user : it_rm->users()) {
+							errs() << user->getName() << "\n";
+						}
+						it_rm->replaceAllUsesWith(select);
+						it_I++;
+						it_rm->eraseFromParent();
+					}
+				} else {
+					it_I++;
+				}
+			}
+		}
+	}
+
+	void print_related_blocks_in_topological_order(const std::vector<BasicBlock*>& sorted_blocks) const {
 		errs() << "print related blocks in topological order:\n";
 		for (auto bb : sorted_blocks) {
 			errs() <<  bb->getName() << "\n";
@@ -177,6 +262,9 @@ struct kdcfgl : public FunctionPass {
 				Twine mask_name = Twine("mask_").concat(block->getName());
 				if (exisiting_start_mask->getParent() != block) {	// exising start mask is NOT in the block
 					Instruction* first_instruction = &(*block->begin());
+					while (first_instruction->getOpcode() == Instruction::PHI) {
+						first_instruction = first_instruction->getNextNode();
+					}
 					it_start_edge->second = BinaryOperator::Create(BinaryOperator::Or, exisiting_start_mask, it_entry_edge->second, mask_name, first_instruction);
 				} else {	// exising start mask is in the block
 					it_start_edge->second = BinaryOperator::Create(BinaryOperator::Or, exisiting_start_mask, it_entry_edge->second, mask_name, exisiting_start_mask->getNextNode());
@@ -218,6 +306,14 @@ struct kdcfgl : public FunctionPass {
 							//errs() << mask_edge->getName() << ", " << (uintptr_t)mask_edge << "\n";
 							masks.insert(make_pair(edge, mask_edge));
 						}
+						createMasksForKeyDependentBranchedBlocksDFS(start_blocks, start_block, block, suc, PDT);
+					}
+				} else {
+					BasicBlock* suc = brI->getSuccessor(0);
+					std::pair<BasicBlock*, BasicBlock*> edge = std::make_pair(block, suc);
+					auto it_edge = masks.find(edge);
+					if (it_edge == masks.end()) {
+						masks.insert(make_pair(edge, it_start_edge->second));
 						createMasksForKeyDependentBranchedBlocksDFS(start_blocks, start_block, block, suc, PDT);
 					}
 				}
