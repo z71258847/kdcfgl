@@ -249,6 +249,9 @@ struct kdcfgl : public FunctionPass {
 			if (it_start_edge == masks.end() || it_start_edge->second == nullptr) {	// no exising start mask
 				masks[start_edge] = it_entry_edge->second;
 			} else {	// update exising start mask
+				if (it_start_edge->second == it_entry_edge->second) {	// nothing to update
+					return;
+				}
 				Instruction* exisiting_start_mask = dyn_cast<Instruction>(it_start_edge->second);
 				Twine mask_name = Twine("mask_").concat(block->getName());
 				if (exisiting_start_mask->getParent() != block) {	// exising start mask is NOT in the block
@@ -270,39 +273,52 @@ struct kdcfgl : public FunctionPass {
 				if (brI->isConditional()) {
 					Value* predicate = brI->getCondition();
 					BasicBlock* suc = brI->getSuccessor(0);
+					Twine mask_true_name = Twine("mask_").concat(block->getName()).concat("_").concat(suc->getName());
 					std::pair<BasicBlock*, BasicBlock*> edge = std::make_pair(block, suc);
 					auto it_edge = masks.find(edge);
 					if (it_edge == masks.end()) {
 						if (it_start_edge == masks.end() || it_start_edge->second == nullptr) {
 							masks.insert(make_pair(edge, predicate));
 						} else {
-							Twine mask_name = Twine("mask_").concat(block->getName()).concat("_").concat(suc->getName());
-							BinaryOperator* mask_edge = BinaryOperator::Create(BinaryOperator::And, it_start_edge->second, predicate, mask_name, brI);
+							BinaryOperator* mask_edge = BinaryOperator::Create(BinaryOperator::And, it_start_edge->second, predicate, mask_true_name, brI);
 							//errs() << mask_edge->getName() << ", " << (uintptr_t)mask_edge << "\n";
 							masks.insert(make_pair(edge, mask_edge));
 						}
-						createMasksForKeyDependentBranchedBlocksDFS(start_blocks, start_block, block, suc, PDT);
+					} else {
+						BinaryOperator* exisited_mask_edge = dyn_cast<BinaryOperator>(it_edge->second);
+						BinaryOperator* mask_edge = BinaryOperator::Create(BinaryOperator::And, it_start_edge->second, predicate, mask_true_name, exisited_mask_edge);
+						exisited_mask_edge->replaceAllUsesWith(mask_edge);
+						exisited_mask_edge->eraseFromParent();
+						//errs() << mask_edge->getName() << ", " << (uintptr_t)mask_edge << "\n";
+						it_edge->second = mask_edge;
 					}
+					createMasksForKeyDependentBranchedBlocksDFS(start_blocks, start_block, block, suc, PDT);
 					suc = brI->getSuccessor(1);
 					edge = std::make_pair(block, suc);
 					it_edge = masks.find(edge);
+					Twine mask_not_name = Twine("mask_not_").concat(predicate->getName());
+					Twine mask_false_name = Twine("mask_").concat(block->getName()).concat("_").concat(suc->getName());
+					BinaryOperator* not_predicate = BinaryOperator::CreateNot(predicate, mask_not_name, brI);
 					if (it_edge == masks.end()) {
-						Twine mask_not_name = Twine("mask_not_").concat(predicate->getName());
-						BinaryOperator* not_predicate = BinaryOperator::CreateNot(predicate, mask_not_name, brI);
 						if (it_start_edge == masks.end() || it_start_edge->second == nullptr) {
 							masks.insert(make_pair(edge, not_predicate));
 						} else {
-							Twine mask_name = Twine("mask_").concat(block->getName()).concat("_").concat(suc->getName());
-							BinaryOperator* mask_edge = BinaryOperator::Create(BinaryOperator::And, it_start_edge->second, not_predicate, mask_name, brI);
+							BinaryOperator* mask_edge = BinaryOperator::Create(BinaryOperator::And, it_start_edge->second, not_predicate, mask_false_name, brI);
 							//errs() << mask_edge->getName() << ", " << (uintptr_t)mask_edge << "\n";
 							masks.insert(make_pair(edge, mask_edge));
 						}
-						createMasksForKeyDependentBranchedBlocksDFS(start_blocks, start_block, block, suc, PDT);
+					} else {
+						BinaryOperator* exisited_mask_edge = dyn_cast<BinaryOperator>(it_edge->second);
+						BinaryOperator* mask_edge = BinaryOperator::Create(BinaryOperator::And, it_start_edge->second, not_predicate, mask_false_name, exisited_mask_edge);
+						exisited_mask_edge->replaceAllUsesWith(mask_edge);
+						exisited_mask_edge->eraseFromParent();
+						//errs() << mask_edge->getName() << ", " << (uintptr_t)mask_edge << "\n";
+						it_edge->second = mask_edge;
 					}
+					createMasksForKeyDependentBranchedBlocksDFS(start_blocks, start_block, block, suc, PDT);
 				} else {
 					BasicBlock* suc = brI->getSuccessor(0);
 					std::pair<BasicBlock*, BasicBlock*> edge = std::make_pair(block, suc);
-					auto it_edge = masks.find(edge);
 					masks[edge] = it_start_edge->second;
 					createMasksForKeyDependentBranchedBlocksDFS(start_blocks, start_block, block, suc, PDT);
 				}
