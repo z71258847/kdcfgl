@@ -10,5 +10,4 @@ int main(){
 			ans++;
 		}
 	}
-	printf("%d\n", ans);
 }
